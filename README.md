@@ -1,5 +1,5 @@
 # augustus
-Small, distroless-when-possible container for `augustus`.
+Small compatibility-focused container for `augustus`.
 
 ## how to use
 ```bash

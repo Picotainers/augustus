@@ -1,4 +1,4 @@
-name: Build and Publish Distroless augustus
+name: Build and Publish augustus
 
 on:
   push:
