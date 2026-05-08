@@ -1,34 +1,44 @@
 # syntax=docker/dockerfile:1
-# Compatibility-first template for augustus.
-# Installs package from Bioconda and copies the full conda runtime to avoid missing libs/interpreters.
 
-FROM mambaorg/micromamba:2.0.5-debian12-slim AS builder
+FROM debian:bookworm AS builder
 
-RUN micromamba install -y -n base -c conda-forge -c bioconda \
-    augustus \
-    && micromamba clean --all --yes
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Resolve a runnable command for this package.
-# Prefer exact match, then underscore variant, then prefix match.
-RUN set -eux; \
-    BIN=""; \
-    if [ -x "/opt/conda/bin/augustus" ]; then BIN="/opt/conda/bin/augustus"; fi; \
-    if [ -z "$BIN" ]; then CAND="/opt/conda/bin/$(echo augustus | tr '-' '_')"; [ -x "$CAND" ] && BIN="$CAND" || true; fi; \
-    if [ -z "$BIN" ]; then BIN="$(find /opt/conda/bin -maxdepth 1 -type f -perm -111 -name 'augustus*' | head -n1 || true)"; fi; \
-    test -n "$BIN"; \
-    printf '%s\n' "$BIN" > /tmp/tool-entry-path
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    build-essential \
+    zlib1g-dev \
+    libbamtools-dev \
+    libboost-iostreams-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM mambaorg/micromamba:2.0.5-debian12-slim
+WORKDIR /opt
+RUN git clone --depth 1 https://github.com/Gaius-Augustus/Augustus.git
 
-COPY --from=builder /opt/conda /opt/conda
-COPY --from=builder /tmp/tool-entry-path /tmp/tool-entry-path
+WORKDIR /opt/Augustus
+RUN make -j"$(nproc)" COMPGENEPRED=false MYSQL=false SQLITE=false augustus
 
-USER root
-ENV PATH="/opt/conda/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/opt/conda/lib:/opt/conda/lib64"
-RUN set -eux; \
-    BIN="$(cat /tmp/tool-entry-path)"; \
-    printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$BIN" > /usr/local/bin/augustus
-RUN chmod +x /usr/local/bin/augustus && rm -f /tmp/tool-entry-path
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    zlib1g \
+    libbamtools2.5.2 \
+    libboost-iostreams1.74.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/Augustus/bin/augustus /usr/local/bin/augustus
+COPY --from=builder /opt/Augustus/config /opt/augustus/config
+
+ENV AUGUSTUS_CONFIG_PATH=/opt/augustus/config
+
+RUN printf '%s\n' '#!/bin/sh' \
+    'if [ "${1:-}" = "augustus" ]; then shift; fi' \
+    'exec /usr/local/bin/augustus "$@"' > /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
+
 WORKDIR /data
-ENTRYPOINT ["/usr/local/bin/augustus"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

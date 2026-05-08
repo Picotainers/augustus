@@ -1,7 +1,12 @@
 # augustus
-Small compatibility-focused container for `augustus`.
+Small source-built container for `augustus`.
 
-## how to use
+## Quick Usage
+
 ```bash
-docker run --rm -v "$(pwd):/data" picotainers/augustus:latest --help
+# Pull the image
+docker pull docker.io/picotainers/augustus:latest
+
+# Run the tool
+docker run --rm -v "$(pwd):/data" docker.io/picotainers/augustus:latest --help
 ```
